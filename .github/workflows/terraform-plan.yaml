@@ -10,9 +10,7 @@ permissions:
   id-token: write
 
 env:
-  PROJECT_ID: gkedemo-485903
   PROJECT_NUMBER: 531610217280
-  REGION: us-central1
   CLUSTER_NAME: gke-demo
   CLUSTER_ZONE: us-central1-a
   TF_VAR_project_id: gkedemo-485903
