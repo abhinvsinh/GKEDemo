@@ -2,7 +2,8 @@ name: Build and Deploy to GKE
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 permissions:
   id-token: write
@@ -11,51 +12,77 @@ permissions:
 env:
   PROJECT_ID: gkedemo-485903
   PROJECT_NUMBER: 531610217280
+
   REGION: us-central1
   CLUSTER_NAME: gke-demo
   CLUSTER_ZONE: us-central1-a
+
   REPOSITORY: containers
   IMAGE_NAME: hello-app
 
 jobs:
   deploy:
+    name: Build → Push → Deploy
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      # -----------------------------
+      # Checkout source
+      # -----------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
 
+      # -----------------------------
+      # Authenticate to Google Cloud
+      # -----------------------------
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: "projects/${{ env.PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          workload_identity_provider: "projects/531610217280/locations/global/workloadIdentityPools/github-pool/providers/github-provider-v2"
           service_account: "github-actions@gkedemo-485903.iam.gserviceaccount.com"
 
+      # -----------------------------
+      # Install gcloud
+      # -----------------------------
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      # -----------------------------
+      # Configure Docker auth
+      # -----------------------------
       - name: Configure Docker
         run: |
-          gcloud auth configure-docker us-central1-docker.pkg.dev
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
+      # -----------------------------
+      # Build & Push Docker image
+      # -----------------------------
       - name: Build and push Docker image
         run: |
           docker buildx build \
             --platform linux/amd64 \
-            -t us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -t us-central1-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME}:${GITHUB_SHA} \
             ./app
 
-          docker push us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push us-central1-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME}:${GITHUB_SHA}
 
+      # -----------------------------
+      # Get GKE credentials
+      # -----------------------------
       - name: Get GKE credentials
         run: |
-          gcloud container clusters get-credentials ${{ env.CLUSTER_NAME }} \
-            --zone ${{ env.CLUSTER_ZONE }} \
-            --project ${{ env.PROJECT_ID }}
+          gcloud container clusters get-credentials ${CLUSTER_NAME} \
+            --zone ${CLUSTER_ZONE} \
+            --project ${PROJECT_ID}
 
-      - name: Deploy with Helm
+      # -----------------------------
+      # Deploy with Helm
+      # -----------------------------
+      - name: Deploy using Helm
         run: |
           helm upgrade --install hello ./helm/hello-app \
             --namespace hello-app \
             --create-namespace \
-            --set image.tag=${{ github.sha }}
+            --set image.repository=us-central1-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME} \
+            --set image.tag=${GITHUB_SHA}
 
